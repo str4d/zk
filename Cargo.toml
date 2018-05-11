@@ -1,6 +1,11 @@
 [package]
-name = "zk"
-version = "0.0.0"
 authors = ["Jack Grigg <jack@z.cash>"]
+description = "Traits for implementing zero-knowledge proving systems"
+documentation = "https://github.com/str4d/zk"
+homepage = "https://github.com/str4d/zk"
+license = "MIT/Apache-2.0"
+name = "zk"
+repository = "https://github.com/str4d/zk"
+version = "0.0.0"
 
 [dependencies]
