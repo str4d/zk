@@ -1,7 +1,6 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
+use std::io;
+
+pub trait ConstraintSystem: Sized {
+    fn decode(&[u8]) -> io::Result<Self>;
+    fn encode(&self) -> Vec<u8>;
 }
