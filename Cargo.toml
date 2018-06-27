@@ -9,3 +9,4 @@ repository = "https://github.com/str4d/zk"
 version = "0.0.0"
 
 [dependencies]
+nom = "4.0"
