@@ -30,6 +30,8 @@ struct Constraint {
     c: LinearCombination,
 }
 
+struct Assignment(VariableIndex, i64);
+
 struct Header {
     v: usize,
     p: usize,
@@ -71,6 +73,25 @@ impl ConstraintSystem for R1CS {
             Err(e) => Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("Failed to read R1CS file: {:?}", e),
+            )),
+        }
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        // TODO
+        Vec::new()
+    }
+}
+
+pub struct Assignments(Header, Vec<Assignment>);
+
+impl Assignments {
+    pub fn decode(buf: &[u8]) -> io::Result<Self> {
+        match encoding::assignments(&buf[..]) {
+            Ok((_, res)) => Ok(res),
+            Err(_) => Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Failed to read assignments file",
             )),
         }
     }

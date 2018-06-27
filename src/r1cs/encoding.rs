@@ -1,4 +1,9 @@
-use super::{Coefficient, Constraint, Header, LinearCombination, R1CS, VariableIndex};
+use nom::IResult;
+
+use super::{
+    Assignment, Assignments, Coefficient, Constraint, Header, LinearCombination, R1CS,
+    VariableIndex,
+};
 
 // VarInt
 // - Each octet has MSB set to 1 if there is another octet, 0 otherwise.
@@ -161,6 +166,42 @@ named!(
     do_parse!(
         tag!("\x52\x31\x43\x53") >> h: header >> cs: length_count!(vlusize, constraint) >>
         (R1CS(h, cs))
+    )
+);
+
+// Assignments:
+// An array of SignedVarInt, split up as follows:
+// | 1 | x_0 | x_1 | … | x_(nx - 1) | w_0 | w_1 | … | w_(nw - 1) |
+// nx and nw are defined by the header.
+
+fn assignment_array(input: &[u8], nx: usize, nw: usize) -> IResult<&[u8], Vec<Assignment>> {
+    do_parse!(
+        input,
+        c: count!(vli64, 1) >> x: count!(vli64, nx) >> w: count!(vli64, nw)
+            >> (c.iter()
+                .map(|n| Assignment(VariableIndex::Constant, *n))
+                .chain(
+                    x.iter()
+                        .enumerate()
+                        .map(|(j, n)| Assignment(VariableIndex::Instance(j), *n)),
+                )
+                .chain(
+                    w.iter()
+                        .enumerate()
+                        .map(|(j, n)| Assignment(VariableIndex::Witness(j), *n)),
+                )
+                .collect())
+    )
+}
+
+// Assignments file:
+// | MAGICINT | Header | Assignments |
+
+named!(
+    pub assignments<Assignments>,
+    do_parse!(
+        tag!("\x52\x31\x61\x73") >> h: header >> res: call!(assignment_array, h.nx, h.nw) >>
+        (Assignments(h, res))
     )
 );
 
