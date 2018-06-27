@@ -1,3 +1,5 @@
+use super::{Coefficient, Constraint, Header, LinearCombination, R1CS, VariableIndex};
+
 // VarInt
 // - Each octet has MSB set to 1 if there is another octet, 0 otherwise.
 // - The 7-bit groups are arranged in little-endian order.
@@ -73,6 +75,93 @@ named!(
             do_parse!(tag_bits!(u8, 1, 0) >> group: take_bits!(u8, 7) >> (group))
         ) >> (bits_to_i64(res))
     ))
+);
+
+// VariableIndex:
+// SignedVarInt
+// - Negative: instance variable
+// - Zero: constant 1
+// - Positive: witness variable
+
+named!(
+    variable_index<VariableIndex>,
+    do_parse!(i: vli64 >> (VariableIndex::from(i)))
+);
+
+// Coefficient:
+// Field element, represented as a SignedVarInt
+// - Handles lots of small-value coefficients, and some random ones
+
+named!(
+    coefficient<Coefficient>,
+    do_parse!(c: vli64 >> (Coefficient(c)))
+);
+
+// Sequence:
+// | Number of entries (VarInt) | Entry 0 | Entry 1 | … |
+
+// LinearCombination
+// | Sequence of (VariableIndex, Coefficient) |
+// - Coefficients must be non-zero
+// - Sorted by type, then index
+//    - [constant, rev_sorted([instance]), sorted([witness])]
+
+named!(
+    linear_combination<LinearCombination>,
+    do_parse!(
+        pairs:
+            length_count!(
+                vlusize,
+                do_parse!(i: variable_index >> c: coefficient >> ((i, c)))
+            ) >> (LinearCombination(pairs))
+    )
+);
+
+// R1CS constraint (A * B = C):
+// | A: LinearCombination | B: LinearComination | C: LinearCombination |
+
+named!(
+    constraint<Constraint>,
+    do_parse!(
+        a: linear_combination
+            >> b: linear_combination
+            >> c: linear_combination
+            >> (Constraint { a, b, c })
+    )
+);
+
+// Header:
+// A version, followed by a Sequence of SignedVarInt.
+// - Version (VarInt)
+// - Number of SignedVarInts in the header (VarInt)
+// - Field description
+//   - Characteristic P
+//   - Degree M
+// - Number of instance variables N_X
+// - Number of witness variables N_W
+// - Further SignedVarInts are undefined in this spec, should be ignored
+//
+// | VERSION | HEADER_LENGTH | P | M | N_X | N_W |(... |)
+
+named!(
+    header<Header>,
+    do_parse!(
+        v: vlusize
+            >> n: length_count!(vlusize, vli64)
+            >> header: expr_res!(Header::from_file(v, n))
+            >> (header)
+    )
+);
+
+// R1CS file:
+// | MAGICINT | Header | Sequence of R1CS constraints |
+
+named!(
+    pub r1cs<R1CS>,
+    do_parse!(
+        tag!("\x52\x31\x43\x53") >> h: header >> cs: length_count!(vlusize, constraint) >>
+        (R1CS(h, cs))
+    )
 );
 
 #[cfg(test)]
