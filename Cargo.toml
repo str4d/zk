@@ -9,4 +9,10 @@ repository = "https://github.com/str4d/zk"
 version = "0.0.0"
 
 [dependencies]
+gumdrop = {version = "0.4", optional = true }
 nom = "4.0"
+
+[[bin]]
+name = "r1cs-decode"
+path = "src/bin/r1cs_decode.rs"
+required-features = ["gumdrop"]
