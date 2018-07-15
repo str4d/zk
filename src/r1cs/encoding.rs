@@ -273,6 +273,13 @@ fn assignment_array(input: &[u8], nx: usize, nw: usize) -> IResult<&[u8], Vec<As
     )
 }
 
+fn gen_assignment<'a>(
+    input: (&'a mut [u8], usize),
+    r: &Assignment,
+) -> Result<(&'a mut [u8], usize), GenError> {
+    gen_vli64(input, r.1)
+}
+
 // Assignments file:
 // | MAGICINT | Header | Assignments |
 
@@ -283,6 +290,18 @@ named!(
         (Assignments(h, res))
     )
 );
+
+pub fn gen_assignments<'a>(
+    input: (&'a mut [u8], usize),
+    r: &Assignments,
+) -> Result<(&'a mut [u8], usize), GenError> {
+    do_gen!(
+        input,
+        gen_slice!(&[0x52, 0x31, 0x61, 0x73])
+            >> gen_call!(gen_header, &r.0)
+            >> gen_many_ref!(&r.1, gen_assignment)
+    )
+}
 
 #[cfg(test)]
 mod tests {

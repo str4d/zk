@@ -235,9 +235,27 @@ impl Assignments {
         }
     }
 
-    fn encode(&self) -> Vec<u8> {
-        // TODO
-        Vec::new()
+    pub fn encode(&self) -> io::Result<Vec<u8>> {
+        let mut data = Vec::new();
+        loop {
+            match encoding::gen_assignments((&mut data, 0), self) {
+                Ok(_) => return Ok(data),
+                Err(e) => match e {
+                    GenError::BufferTooSmall(sz) => {
+                        data.resize(sz, 0);
+                        continue;
+                    }
+                    GenError::InvalidOffset
+                    | GenError::CustomError(_)
+                    | GenError::NotYetImplemented => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "could not encode Assignments",
+                        ))
+                    }
+                },
+            }
+        }
     }
 }
 
@@ -305,5 +323,32 @@ mod tests {
         let encoded = r1cs.encode().unwrap();
         let decoded = R1CS::decode(&encoded);
         assert_eq!(decoded.unwrap(), r1cs);
+    }
+
+    #[test]
+    fn assignments_encode_decode() {
+        // Assignments for the simple XOR circuit above:
+        //   Version:           0
+        //   Characteristic:    64513
+        //   Degree:            1
+        //   Input variables:   1
+        //   Witness variables: 2
+        //   Assignments:
+        //     Constant = 1
+        //     x_0 = 1
+        //     w_0 = 0
+        //     w_1 = 1
+        let header = Header::from_file(0, vec![64513, 1, 1, 2]).unwrap();
+        let assignments = vec![
+            Assignment(VariableIndex::Constant, 1),
+            Assignment(VariableIndex::Instance(0), 1),
+            Assignment(VariableIndex::Witness(0), 0),
+            Assignment(VariableIndex::Witness(1), 1),
+        ];
+        let assignments = Assignments(header, assignments);
+
+        let encoded = assignments.encode().unwrap();
+        let decoded = Assignments::decode(&encoded);
+        assert_eq!(decoded.unwrap(), assignments);
     }
 }
