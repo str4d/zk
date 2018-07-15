@@ -1,3 +1,4 @@
+use cookie_factory::GenError;
 use nom::IResult;
 
 use super::{
@@ -39,6 +40,10 @@ named!(
         ) >> (bits_to_usize(res))
     ))
 );
+
+fn gen_vlusize(input: (&mut [u8], usize), n: usize) -> Result<(&mut [u8], usize), GenError> {
+    gen_slice!((input.0, input.1), usize_to_bits(n))
+}
 
 // SignedVarInt
 // - Each octet has MSB set to 1 if there is another octet, 0 otherwise.
@@ -82,6 +87,10 @@ named!(
     ))
 );
 
+fn gen_vli64(input: (&mut [u8], usize), n: i64) -> Result<(&mut [u8], usize), GenError> {
+    gen_slice!((input.0, input.1), i64_to_bits(n))
+}
+
 // VariableIndex:
 // SignedVarInt
 // - Negative: instance variable
@@ -93,6 +102,13 @@ named!(
     do_parse!(i: vli64 >> (VariableIndex::from(i)))
 );
 
+fn gen_variable_index<'a>(
+    input: (&'a mut [u8], usize),
+    i: &VariableIndex,
+) -> Result<(&'a mut [u8], usize), GenError> {
+    gen_vli64(input, i.into())
+}
+
 // Coefficient:
 // Field element, represented as a SignedVarInt
 // - Handles lots of small-value coefficients, and some random ones
@@ -101,6 +117,13 @@ named!(
     coefficient<Coefficient>,
     do_parse!(c: vli64 >> (Coefficient(c)))
 );
+
+fn gen_coefficient<'a>(
+    input: (&'a mut [u8], usize),
+    c: &Coefficient,
+) -> Result<(&'a mut [u8], usize), GenError> {
+    gen_vli64(input, c.0)
+}
 
 // Sequence:
 // | Number of entries (VarInt) | Entry 0 | Entry 1 | … |
@@ -122,6 +145,26 @@ named!(
     )
 );
 
+fn gen_linear_combination_entry<'a>(
+    input: (&'a mut [u8], usize),
+    entry: &(VariableIndex, Coefficient),
+) -> Result<(&'a mut [u8], usize), GenError> {
+    do_gen!(
+        input,
+        gen_variable_index(&entry.0) >> gen_coefficient(&entry.1)
+    )
+}
+
+fn gen_linear_combination<'a>(
+    input: (&'a mut [u8], usize),
+    lc: &LinearCombination,
+) -> Result<(&'a mut [u8], usize), GenError> {
+    do_gen!(
+        input,
+        gen_call!(gen_vlusize, lc.0.len()) >> gen_many_ref!(&lc.0, gen_linear_combination_entry)
+    )
+}
+
 // R1CS constraint (A * B = C):
 // | A: LinearCombination | B: LinearComination | C: LinearCombination |
 
@@ -134,6 +177,18 @@ named!(
             >> (Constraint { a, b, c })
     )
 );
+
+fn gen_constraint<'a>(
+    input: (&'a mut [u8], usize),
+    c: &Constraint,
+) -> Result<(&'a mut [u8], usize), GenError> {
+    do_gen!(
+        input,
+        gen_call!(gen_linear_combination, &c.a)
+            >> gen_call!(gen_linear_combination, &c.b)
+            >> gen_call!(gen_linear_combination, &c.c)
+    )
+}
 
 // Header:
 // A version, followed by a Sequence of SignedVarInt.
@@ -158,6 +213,17 @@ named!(
     )
 );
 
+fn gen_header<'a>(
+    input: (&'a mut [u8], usize),
+    h: &Header,
+) -> Result<(&'a mut [u8], usize), GenError> {
+    let (v, n) = h.to_file();
+    do_gen!(
+        input,
+        gen_call!(gen_vlusize, v) >> gen_call!(gen_vlusize, n.len()) >> gen_many!(n, gen_vli64)
+    )
+}
+
 // R1CS file:
 // | MAGICINT | Header | Sequence of R1CS constraints |
 
@@ -168,6 +234,19 @@ named!(
         (R1CS(h, cs))
     )
 );
+
+pub fn gen_r1cs<'a>(
+    input: (&'a mut [u8], usize),
+    r: &R1CS,
+) -> Result<(&'a mut [u8], usize), GenError> {
+    do_gen!(
+        input,
+        gen_slice!(&[0x52, 0x31, 0x43, 0x53])
+            >> gen_call!(gen_header, &r.0)
+            >> gen_call!(gen_vlusize, r.1.len())
+            >> gen_many_ref!(&r.1, gen_constraint)
+    )
+}
 
 // Assignments:
 // An array of SignedVarInt, split up as follows:

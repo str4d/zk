@@ -1,3 +1,4 @@
+use cookie_factory::GenError;
 use std::fmt;
 use std::io;
 
@@ -18,6 +19,16 @@ impl From<i64> for VariableIndex {
             0 => VariableIndex::Constant,
             i if i < 0 => VariableIndex::Instance(-i as usize - 1),
             i => VariableIndex::Witness(i as usize - 1),
+        }
+    }
+}
+
+impl<'a> From<&'a VariableIndex> for i64 {
+    fn from(i: &VariableIndex) -> Self {
+        match i {
+            &VariableIndex::Constant => 0,
+            &VariableIndex::Instance(i) => -(i as i64 + 1),
+            &VariableIndex::Witness(i) => i as i64 + 1,
         }
     }
 }
@@ -143,6 +154,16 @@ impl Header {
             _ignored: n[4..].to_vec(),
         })
     }
+
+    fn to_file(&self) -> (usize, Vec<i64>) {
+        let mut n = Vec::with_capacity(4 + self._ignored.len());
+        n.push(self.p as i64);
+        n.push(self.m as i64);
+        n.push(self.nx as i64);
+        n.push(self.nw as i64);
+        n.extend_from_slice(&self._ignored);
+        (self.v, n)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -159,9 +180,27 @@ impl ConstraintSystem for R1CS {
         }
     }
 
-    fn encode(&self) -> Vec<u8> {
-        // TODO
-        Vec::new()
+    fn encode(&self) -> io::Result<Vec<u8>> {
+        let mut data = Vec::new();
+        loop {
+            match encoding::gen_r1cs((&mut data, 0), self) {
+                Ok(_) => return Ok(data),
+                Err(e) => match e {
+                    GenError::BufferTooSmall(sz) => {
+                        data.resize(sz, 0);
+                        continue;
+                    }
+                    GenError::InvalidOffset
+                    | GenError::CustomError(_)
+                    | GenError::NotYetImplemented => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "could not encode R1CS",
+                        ))
+                    }
+                },
+            }
+        }
     }
 }
 
@@ -214,5 +253,57 @@ impl fmt::Display for Assignments {
             write!(f, "  {}\n", a)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn r1cs_encode_decode() {
+        // Simple XOR circuit:
+        //   Version:           0
+        //   Characteristic:    64513
+        //   Degree:            1
+        //   Input variables:   1
+        //   Witness variables: 2
+        //   Constraints:
+        //     (1 - w_0) * (w_0) = 0
+        //     (1 - w_1) * (w_1) = 0
+        //     (w_0 * 2) * (w_1) = -x_0 + w_0 + w_1
+        let header = Header::from_file(0, vec![64513, 1, 1, 2]).unwrap();
+        let constraints = vec![
+            Constraint {
+                a: LinearCombination(vec![
+                    (VariableIndex::Constant, Coefficient(1)),
+                    (VariableIndex::Witness(0), Coefficient(-1)),
+                ]),
+                b: LinearCombination(vec![(VariableIndex::Witness(0), Coefficient(1))]),
+                c: LinearCombination(vec![(VariableIndex::Constant, Coefficient(0))]),
+            },
+            Constraint {
+                a: LinearCombination(vec![
+                    (VariableIndex::Constant, Coefficient(1)),
+                    (VariableIndex::Witness(1), Coefficient(-1)),
+                ]),
+                b: LinearCombination(vec![(VariableIndex::Witness(1), Coefficient(1))]),
+                c: LinearCombination(vec![(VariableIndex::Constant, Coefficient(0))]),
+            },
+            Constraint {
+                a: LinearCombination(vec![(VariableIndex::Witness(0), Coefficient(2))]),
+                b: LinearCombination(vec![(VariableIndex::Witness(1), Coefficient(1))]),
+                c: LinearCombination(vec![
+                    (VariableIndex::Instance(0), Coefficient(-1)),
+                    (VariableIndex::Witness(0), Coefficient(1)),
+                    (VariableIndex::Witness(1), Coefficient(1)),
+                ]),
+            },
+        ];
+        let r1cs = R1CS(header, constraints);
+
+        let encoded = r1cs.encode().unwrap();
+        let decoded = R1CS::decode(&encoded);
+        assert_eq!(decoded.unwrap(), r1cs);
     }
 }
