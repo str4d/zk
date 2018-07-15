@@ -5,6 +5,7 @@ use super::ConstraintSystem;
 
 mod encoding;
 
+#[derive(Debug, PartialEq)]
 enum VariableIndex {
     Constant,
     Instance(usize),
@@ -21,8 +22,10 @@ impl From<i64> for VariableIndex {
     }
 }
 
+#[derive(Debug, PartialEq)]
 struct Coefficient(i64);
 
+#[derive(Debug, PartialEq)]
 struct LinearCombination(Vec<(VariableIndex, Coefficient)>);
 
 impl LinearCombination {
@@ -77,6 +80,7 @@ impl LinearCombination {
     }
 }
 
+#[derive(Debug, PartialEq)]
 struct Constraint {
     a: LinearCombination,
     b: LinearCombination,
@@ -94,6 +98,7 @@ impl Constraint {
     }
 }
 
+#[derive(Debug, PartialEq)]
 struct Assignment(VariableIndex, i64);
 
 impl fmt::Display for Assignment {
@@ -107,6 +112,7 @@ impl fmt::Display for Assignment {
     }
 }
 
+#[derive(Debug, PartialEq)]
 struct Header {
     v: usize,
     p: usize,
@@ -139,6 +145,7 @@ impl Header {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct R1CS(Header, Vec<Constraint>);
 
 impl ConstraintSystem for R1CS {
@@ -175,6 +182,7 @@ impl fmt::Display for R1CS {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Assignments(Header, Vec<Assignment>);
 
 impl Assignments {
