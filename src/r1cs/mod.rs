@@ -351,4 +351,94 @@ mod tests {
         let decoded = Assignments::decode(&encoded);
         assert_eq!(decoded.unwrap(), assignments);
     }
+
+    #[test]
+    fn inner_product_r1cs_encode_decode() {
+        // Inner product of 3-dimensional vectors circuit:
+        //   Version:           0
+        //   Characteristic:    64513
+        //   Degree:            3
+        //   Input variables:   7
+        //   Witness variables: 3
+        //   Constraints:
+        //     x_0 * x_3 = w_0
+        //     x_1 * x_4 = w_1 - w_0
+        //     x_2 * x_5 = x_6 - w_1
+        let header = Header::from_file(0, vec![64513, 3, 7, 2]).unwrap();
+        let constraints = vec![
+            Constraint {
+                a: LinearCombination(vec![(VariableIndex::Instance(0), Coefficient(1))]),
+                b: LinearCombination(vec![(VariableIndex::Instance(3), Coefficient(1))]),
+                c: LinearCombination(vec![(VariableIndex::Witness(0), Coefficient(1))]),
+            },
+            Constraint {
+                a: LinearCombination(vec![(VariableIndex::Instance(1), Coefficient(1))]),
+                b: LinearCombination(vec![(VariableIndex::Instance(4), Coefficient(1))]),
+                c: LinearCombination(vec![
+                     (VariableIndex::Witness(1), Coefficient(1)),
+                     (VariableIndex::Witness(0), Coefficient(-1)),
+                ]),
+            },
+            Constraint {
+                a: LinearCombination(vec![(VariableIndex::Instance(2), Coefficient(1))]),
+                b: LinearCombination(vec![(VariableIndex::Instance(5), Coefficient(1))]),
+                c: LinearCombination(vec![
+                     (VariableIndex::Instance(6), Coefficient(1)),
+                     (VariableIndex::Witness(2), Coefficient(-1)),
+                ]),
+            },
+        ];
+        let r1cs = R1CS(header, constraints);
+
+        let encoded = r1cs.encode().unwrap();
+        let decoded = R1CS::decode(&encoded);
+        assert_eq!(decoded.unwrap(), r1cs);
+    }
+
+    #[test]
+    fn inner_product_assignments_encode_decode() {
+        // Assignments for the inner product of 3-dimensional vectors circuit:
+        //   Version:           0
+        //   Characteristic:    64513
+        //   Degree:            3
+        //   Input variables:   7
+        //   Witness variables: 3
+        //   Assignments:
+        //     Constant = 1
+        //     x_0 = 1
+        //     x_1 = 2
+        //     x_2 = 3
+        //     x_3 = 4
+        //     x_4 = 5
+        //     x_5 = 6
+        //     x_6 = 32
+        //     w_0 = 4
+        //     w_1 = 14
+        let header = Header::from_file(0, vec![64513, 3, 7, 2]).unwrap();
+        let assignments = vec![
+            Assignment(VariableIndex::Constant, 1),
+
+            // vector 1
+            Assignment(VariableIndex::Instance(0), 1),
+            Assignment(VariableIndex::Instance(1), 2),
+            Assignment(VariableIndex::Instance(2), 3),
+
+            // vector 2
+            Assignment(VariableIndex::Instance(3), 4),
+            Assignment(VariableIndex::Instance(4), 5),
+            Assignment(VariableIndex::Instance(5), 6),
+
+            // expected result
+            Assignment(VariableIndex::Instance(6), 32),
+
+            // intermediate sums
+            Assignment(VariableIndex::Witness(0), 4),
+            Assignment(VariableIndex::Witness(1), 14),
+        ];
+        let assignments = Assignments(header, assignments);
+
+        let encoded = assignments.encode().unwrap();
+        let decoded = Assignments::decode(&encoded);
+        assert_eq!(decoded.unwrap(), assignments);
+    }
 }
